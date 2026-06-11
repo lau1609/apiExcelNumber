@@ -1,6 +1,5 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONEncoder
 import pandas as pd
 import requests
 import time
@@ -8,6 +7,7 @@ import io
 
 app = FastAPI(title="Wati Bulk Sender API")
 
+# Permitir que tu frontend se conecte sin problemas de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
