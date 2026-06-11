@@ -8,7 +8,6 @@ import io
 
 app = FastAPI(title="Wati Bulk Sender API")
 
-# Permitir que tu frontend se conecte sin problemas de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
