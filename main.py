@@ -31,49 +31,45 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
 
 @app.post("/procesar")
 async def procesar_envios(
+    file: UploadFile = File(...),
     enlace: str = Form(...),
     localizacion: str = Form(...),
-    hotel: str = Form(...),
-    file: UploadFile = File(...)
+    hotel: str = Form(...)
 ):
     try:
-        # Leer el archivo Excel de manera segura
         contents = await file.read()
         df = pd.read_excel(contents)
         
-        # Supongamos que tu columna se llama 'telefono' o 'Celular' (ajusta según tu excel)
-        # Buscamos una columna que se parezca a teléfono si no viene exacta
         col_telefono = [c for c in df.columns if 'tel' in c.lower() or 'cel' in c.lower()]
         if not col_telefono:
             return {"success": False, "message": "No se encontró la columna de teléfonos en el Excel."}
         
         nombre_columna = col_telefono[0]
         
-        # Configuración de Wati (Cámbialo por tus credenciales reales o variables de entorno)
-        WATI_API_ENDPOINT = "https://live-mt-server.wati.io/10157709" 
-        WATI_TOKEN = "TU_BEARER_TOKEN_AQUI" 
+        WATI_API_ENDPOINT = "https://live-mt-server.wati.io/10157709"
+        WATI_TOKEN = "TU_BEARER_TOKEN_AQUI"
         
         headers = {
             "Authorization": f"Bearer {WATI_TOKEN}",
             "Content-Type": "application/json"
         }
         
-        exitosos = 0
-        fallidos = 0
+        # --- AQUÍ VOLVEMOS A DECLARAR EL REPORTE DETALLADO ---
+        reporte_envios = []
 
         for index, row in df.iterrows():
-            telefono_crudo = str(row[nombre_columna])
+            telefono_crudo = str(row[nombre_columna]).strip()
             telefono_limpio = limpiar_y_formatear_telefono(telefono_crudo)
             
             if not telefono_limpio:
-                fallidos += 1
+                reporte_envios.append({
+                    "dato": telefono_crudo,
+                    "procesado": "Inválido",
+                    "estado": "fallido (Número vacío o mal estructurado)"
+                })
                 continue
                 
-            # --- AQUÍ ESTÁ EL CAMBIO CLAVE SEGÚN LA DOCUMENTACIÓN DE WATI ---
-            # El número ({target}) va EN LA RUTA, NO como parámetro query ?whatsappNumber=
             url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendSessionMessage/{telefono_limpio}"
-            
-            # El texto que vas a mandar (puedes personalizarlo con tu enlace, hotel, etc.)
             payload = {
                 "messageText": f"Hola, te invitamos a responder nuestra encuesta del hotel {hotel} en {localizacion}: {enlace}"
             }
@@ -81,21 +77,32 @@ async def procesar_envios(
             try:
                 response = requests.post(url_wati, json=payload, headers=headers, timeout=10)
                 if response.status_code == 200:
-                    exitosos += 1
+                    estado = "enviado"
                 else:
-                    fallidos += 1
-            except Exception:
-                fallidos += 1
+                    try:
+                        error_detail = response.json().get('info', response.text)
+                    except:
+                        error_detail = response.text
+                    estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
+            except Exception as err:
+                estado = f"fallido (Error Conexión: {type(err).__name__})"
 
-        # Devolvemos exactamente la estructura con "success" que espera tu JavaScript
+            # Guardamos el resultado de esta fila
+            reporte_envios.append({
+                "dato": telefono_crudo,
+                "procesado": telefono_limpio,
+                "estado": estado
+            })
+
+        # --- RETORNAMOS LA ESTRUCTURA COMPLETA QUE BUSCA EL FOREACH ---
         return {
-            "success": True, 
-            "message": f"Proceso terminado. Envíos exitosos: {exitosos}, Fallidos: {fallidos}"
+            "success": True,
+            "tipo_dato": "telefono",
+            "extracted_data": reporte_envios
         }
 
     except Exception as e:
-        # Si algo falla críticamente, devolvemos un JSON válido para que JS no tire "undefined"
-        return {"success": False, "message": f"Error interno en el servidor Python: {str(e)}"}
+        return {"success": False, "message": f"Error al procesar el archivo: {str(e)}"}
 
 # Endpoint de Healthcheck para que Coolify no piense que la app está muerta
 @app.get("/health")
