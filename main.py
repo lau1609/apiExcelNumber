@@ -17,14 +17,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WATI_URL = "https://live-mt-server.wati.io/10157709/api/v1/sendSessionMessage"
-# IMPORTANTE: Asegúrate de mantener aquí tu clave JWT pura sin la palabra "Bearer "
+# URL Base según tu documentación oficial (¡Ya no incluye la ruta del endpoint al final!)
+WATI_URL = "https://live-mt-server.wati.io/10157709"
+
+# Tu clave JWT pura
 WATTI_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.ValZyX1jO5C_2uO-TM6Dlpt5q9sQWgY-xCQZuUMNkY8..." 
 
 def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
     """
     Limpia cualquier formato extraño del número y asegura el formato internacional 
-    adecuado para México manteniendo el '1' si ya viene integrado.
+    adecuado para México (52 + 10 dígitos), removiendo el '1' si viene integrado
+    ya que las versiones actuales de WhatsApp API no lo requieren.
     """
     if not telefono_crudo or telefono_crudo == 'nan':
         return ""
@@ -41,12 +44,14 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
         return ""
         
     # 3. Normalización de lada internacional para México (52)
-    # Si viene a 10 dígitos locales (ej: 6142843215), le ponemos el prefijo completo con el '1' de celular
+    # Si viene a 10 dígitos locales (ej: 6142843215), le ponemos el prefijo 52
     if len(numeros) == 10:
-        numeros = '521' + numeros  
+        numeros = '52' + numeros  
         
-    # Si ya viene con 13 dígitos (ej: 5216142843215) o 12 dígitos (526142843215), 
-    # lo dejamos pasar tal cual sin mutilar el número para que Wati lo reciba completo.
+    # Si viene con 13 dígitos (ej: 5216142843215), le removemos el '1' sobrante
+    if len(numeros) == 13 and numeros.startswith('521'):
+        numeros = '52' + numeros[3:]
+        
     return numeros
     
 
@@ -68,52 +73,48 @@ async def procesar_archivo(
         if 'Telefono' not in df.columns:
             return {"success": False, "message": "El Excel debe contener una columna llamada 'Telefono'"}
 
-        # ... [Tu código anterior permanece igual]
+        # Mantenemos los encabezados limpios. Si Wati te rechaza el token por el "Bearer ", 
+        # puedes cambiarlo a: "Authorization": WATTI_API_KEY
+        headers = {
+            "Authorization": f"Bearer {WATTI_API_KEY}",
+            "Accept": "application/json"
+        }
 
-headers = {
-    "Authorization": f"Bearer {WATTI_API_KEY}", # Asegúrate de usar 'Bearer ' si lo pide tu entorno, o déjalo puro si así te funciona en Postman
-    "Accept": "application/json"
-}
+        reporte_envios = []
 
-reporte_envios = []
-
-for index, fila in df.iterrows():
-    str_telefono = str(fila['Telefono']).strip()
-    telefono_limpio = limpiar_y_formatear_telefono(str_telefono)
-    
-    if not telefono_limpio:
-        continue
-
-    mensaje = f"¡Hola! Te invitamos a contestar nuestra encuesta en el siguiente enlace: {url or 'sichtur.org'}"
-    
-    # SOLUCIÓN 1: Mover el teléfono al final de la ruta como indica la documentación
-    # Estructura: /api/v1/sendSessionMessage/{target}
-    url_envio = f"{WATI_URL}/api/v1/sendSessionMessage/{telefono_limpio}"
-    
-    # SOLUCIÓN 2: Definir el mensaje como Query Parameter
-    query_params = {
-        "messageText": mensaje
-    }
-
-    try:
-        # Enviamos la petición usando 'params' en lugar de 'json'
-        # Al ser un método POST sin body, mandamos un diccionario vacío en 'json' o 'data' si es necesario, 
-        # pero los datos importantes viajan en la URL gracias a 'params'.
-        response = requests.post(url_envio, params=query_params, headers=headers, timeout=10)
-        
-        if response.status_code in [200, 201]:
-            estado = "enviado"
-        else:
-            try:
-                error_detail = response.json().get('info', response.text)
-            except:
-                error_detail = response.text
-            estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
+        for index, fila in df.iterrows():
+            # Convertimos el contenido de la celda a string antes de limpiar
+            str_telefono = str(fila['Telefono']).strip()
+            telefono_limpio = limpiar_y_formatear_telefono(str_telefono)
             
-    except Exception as err:
-        estado = f"fallido (Error Conexión: {type(err).__name__})"
+            if not telefono_limpio:
+                continue
 
-    # ... [El resto de tu código para guardar en reporte_envios y el time.sleep(1.5) se mantiene igual]
+            mensaje = f"¡Hola! Te invitamos a contestar nuestra encuesta en el siguiente enlace: {url or 'sichtur.org'}"
+            
+            # CORRECCIÓN 1: El teléfono ({target}) ahora va incrustado directamente en la ruta (Path Parameter)
+            url_envio = f"{WATI_URL}/api/v1/sendSessionMessage/{telefono_limpio}"
+            
+            # CORRECCIÓN 2: El mensaje viaja como Query Parameter en la URL, no en el cuerpo JSON
+            query_params = {
+                "messageText": mensaje
+            }
+
+            try:
+                # Enviamos la petición usando 'params' para inyectar las variables en la URL
+                response = requests.post(url_envio, params=query_params, headers=headers, timeout=10)
+                
+                if response.status_code in [200, 201]:
+                    estado = "enviado"
+                else:
+                    try:
+                        error_detail = response.json().get('info', response.text)
+                    except:
+                        error_detail = response.text
+                    estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
+                    
+            except Exception as err:
+                estado = f"fallido (Error Conexión: {type(err).__name__})"
 
             reporte_envios.append({
                 "dato": str_telefono,             # Entrada original del Excel
