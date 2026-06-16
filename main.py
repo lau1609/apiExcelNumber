@@ -1,139 +1,103 @@
-from fastapi import FastAPI, UploadFile, File, Form
+import os
+import re
+import requests
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
-import requests
-import time
-import io
-import re
 
-app = FastAPI(title="Wati Bulk Sender API")
+app = FastAPI()
 
-# Configuración de CORS habilitada para tu frontend
+# 1. Aseguramos CORS para evitar el error de "Error de comunicación o CORS"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],  # O pon la URL de tu frontend de sichitur.org si prefieres cerrarlo
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# URL Base según tu documentación oficial (¡Ya no incluye la ruta del endpoint al final!)
-WATI_URL = "https://live-mt-server.wati.io/10157709"
-
-# Tu clave JWT pura
-WATTI_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.ValZyX1jO5C_2uO-TM6Dlpt5q9sQWgY-xCQZuUMNkY8..." 
-
 def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
-    """
-    Limpia cualquier formato extraño del número y asegura el formato internacional 
-    adecuado para México (52 + 10 dígitos), removiendo el '1' si viene integrado
-    ya que las versiones actuales de WhatsApp API no lo requieren.
-    """
-    if not telefono_crudo or telefono_crudo == 'nan':
+    if not telefono_crudo or str(telefono_crudo).lower() == 'nan':
         return ""
-        
-    # 1. Forzar limpieza si Pandas guardó residuos de tipo flotante (.0)
-    t_clean = telefono_crudo.strip()
+    t_clean = str(telefono_crudo).strip()
     if t_clean.endswith('.0'):
         t_clean = t_clean[:-2]
-        
-    # 2. Dejar única y estrictamente los caracteres numéricos
     numeros = re.sub(r'\D', '', t_clean)
-    
     if not numeros:
         return ""
-        
-    # 3. Normalización de lada internacional para México (52)
-    # Si viene a 10 dígitos locales (ej: 6142843215), le ponemos el prefijo 52
     if len(numeros) == 10:
-        numeros = '52' + numeros  
-        
-    # Si viene con 13 dígitos (ej: 5216142843215), le removemos el '1' sobrante
-    if len(numeros) == 13 and numeros.startswith('521'):
-        numeros = '52' + numeros[3:]
-        
+        numeros = '521' + numeros  
     return numeros
-    
 
 @app.post("/procesar")
-async def procesar_archivo(
-    file: UploadFile = File(...),
-    url: str = Form(None),
-    loc: str = Form(None),
-    hotel: str = Form(None)
+async def procesar_envios(
+    enlace: str = Form(...),
+    localizacion: str = Form(...),
+    hotel: str = Form(...),
+    file: UploadFile = File(...)
 ):
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        return {"success": False, "message": "El archivo debe ser un Excel válido (.xlsx o .xls)"}
-
     try:
+        # Leer el archivo Excel de manera segura
         contents = await file.read()
-        df = pd.read_excel(io.BytesIO(contents))
-        df.columns = df.columns.str.strip()
-
-        if 'Telefono' not in df.columns:
-            return {"success": False, "message": "El Excel debe contener una columna llamada 'Telefono'"}
-
-        # Mantenemos los encabezados limpios. Si Wati te rechaza el token por el "Bearer ", 
-        # puedes cambiarlo a: "Authorization": WATTI_API_KEY
+        df = pd.read_excel(contents)
+        
+        # Supongamos que tu columna se llama 'telefono' o 'Celular' (ajusta según tu excel)
+        # Buscamos una columna que se parezca a teléfono si no viene exacta
+        col_telefono = [c for c in df.columns if 'tel' in c.lower() or 'cel' in c.lower()]
+        if not col_telefono:
+            return {"success": False, "message": "No se encontró la columna de teléfonos en el Excel."}
+        
+        nombre_columna = col_telefono[0]
+        
+        # Configuración de Wati (Cámbialo por tus credenciales reales o variables de entorno)
+        WATI_API_ENDPOINT = "https://live-mt-server.wati.io/10157709" 
+        WATI_TOKEN = "TU_BEARER_TOKEN_AQUI" 
+        
         headers = {
-            "Authorization": f"Bearer {WATTI_API_KEY}",
-            "Accept": "application/json"
+            "Authorization": f"Bearer {WATI_TOKEN}",
+            "Content-Type": "application/json"
         }
+        
+        exitosos = 0
+        fallidos = 0
 
-        reporte_envios = []
-
-        for index, fila in df.iterrows():
-            # Convertimos el contenido de la celda a string antes de limpiar
-            str_telefono = str(fila['Telefono']).strip()
-            telefono_limpio = limpiar_y_formatear_telefono(str_telefono)
+        for index, row in df.iterrows():
+            telefono_crudo = str(row[nombre_columna])
+            telefono_limpio = limpiar_y_formatear_telefono(telefono_crudo)
             
             if not telefono_limpio:
+                fallidos += 1
                 continue
-
-            mensaje = f"¡Hola! Te invitamos a contestar nuestra encuesta en el siguiente enlace: {url or 'sichtur.org'}"
-            
-            # CORRECCIÓN 1: El teléfono ({target}) ahora va incrustado directamente en la ruta (Path Parameter)
-            url_envio = f"{WATI_URL}/api/v1/sendSessionMessage/{telefono_limpio}"
-            
-            # CORRECCIÓN 2: El mensaje viaja como Query Parameter en la URL, no en el cuerpo JSON
-            query_params = {
-                "messageText": mensaje
-            }
-
-            try:
-                # Enviamos la petición usando 'params' para inyectar las variables en la URL
-                response = requests.post(url_envio, params=query_params, headers=headers, timeout=10)
                 
-                if response.status_code in [200, 201]:
-                    estado = "enviado"
+            # --- AQUÍ ESTÁ EL CAMBIO CLAVE SEGÚN LA DOCUMENTACIÓN DE WATI ---
+            # El número ({target}) va EN LA RUTA, NO como parámetro query ?whatsappNumber=
+            url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendSessionMessage/{telefono_limpio}"
+            
+            # El texto que vas a mandar (puedes personalizarlo con tu enlace, hotel, etc.)
+            payload = {
+                "messageText": f"Hola, te invitamos a responder nuestra encuesta del hotel {hotel} en {localizacion}: {enlace}"
+            }
+            
+            try:
+                response = requests.post(url_wati, json=payload, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    exitosos += 1
                 else:
-                    try:
-                        error_detail = response.json().get('info', response.text)
-                    except:
-                        error_detail = response.text
-                    estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
-                    
-            except Exception as err:
-                estado = f"fallido (Error Conexión: {type(err).__name__})"
+                    fallidos += 1
+            except Exception:
+                fallidos += 1
 
-            reporte_envios.append({
-                "dato": str_telefono,             # Entrada original del Excel
-                "procesado": telefono_limpio,     # Teléfono procesado final
-                "estado": estado
-            })
-
-            # Control de flujo de envío respetando los límites de Wati
-            time.sleep(1.5)
-
+        # Devolvemos exactamente la estructura con "success" que espera tu JavaScript
         return {
-            "success": True,
-            "tipo_dato": "telefono",
-            "extracted_data": reporte_envios
+            "success": True, 
+            "message": f"Proceso terminado. Envíos exitosos: {exitosos}, Fallidos: {fallidos}"
         }
 
     except Exception as e:
-        return {"success": False, "message": f"Error al procesar el Excel: {str(e)}"}
+        # Si algo falla críticamente, devolvemos un JSON válido para que JS no tire "undefined"
+        return {"success": False, "message": f"Error interno en el servidor Python: {str(e)}"}
 
+# Endpoint de Healthcheck para que Coolify no piense que la app está muerta
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
