@@ -68,41 +68,52 @@ async def procesar_archivo(
         if 'Telefono' not in df.columns:
             return {"success": False, "message": "El Excel debe contener una columna llamada 'Telefono'"}
 
-        headers = {
-            "Authorization": WATTI_API_KEY,
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }
+        # ... [Tu código anterior permanece igual]
 
-        reporte_envios = []
+headers = {
+    "Authorization": f"Bearer {WATTI_API_KEY}", # Asegúrate de usar 'Bearer ' si lo pide tu entorno, o déjalo puro si así te funciona en Postman
+    "Accept": "application/json"
+}
 
-        for index, fila in df.iterrows():
-            # Convertimos el contenido de la celda a string antes de limpiar
-            str_telefono = str(fila['Telefono']).strip()
-            telefono_limpio = limpiar_y_formatear_telefono(str_telefono)
-            
-            if not telefono_limpio:
-                continue
+reporte_envios = []
 
-            mensaje = f"¡Hola! Te invitamos a contestar nuestra encuesta en el siguiente enlace: {url or 'sichtur.org'}"
-            url_envio = f"{WATI_URL}?whatsappNumber={telefono_limpio}"
-            payload = {"messageText": mensaje}
+for index, fila in df.iterrows():
+    str_telefono = str(fila['Telefono']).strip()
+    telefono_limpio = limpiar_y_formatear_telefono(str_telefono)
+    
+    if not telefono_limpio:
+        continue
 
+    mensaje = f"¡Hola! Te invitamos a contestar nuestra encuesta en el siguiente enlace: {url or 'sichtur.org'}"
+    
+    # SOLUCIÓN 1: Mover el teléfono al final de la ruta como indica la documentación
+    # Estructura: /api/v1/sendSessionMessage/{target}
+    url_envio = f"{WATI_URL}/api/v1/sendSessionMessage/{telefono_limpio}"
+    
+    # SOLUCIÓN 2: Definir el mensaje como Query Parameter
+    query_params = {
+        "messageText": mensaje
+    }
+
+    try:
+        # Enviamos la petición usando 'params' en lugar de 'json'
+        # Al ser un método POST sin body, mandamos un diccionario vacío en 'json' o 'data' si es necesario, 
+        # pero los datos importantes viajan en la URL gracias a 'params'.
+        response = requests.post(url_envio, params=query_params, headers=headers, timeout=10)
+        
+        if response.status_code in [200, 201]:
+            estado = "enviado"
+        else:
             try:
-                response = requests.post(url_envio, json=payload, headers=headers, timeout=10)
-                
-                if response.status_code in [200, 201]:
-                    estado = "enviado"
-                else:
-                    # Capturamos el detalle del error directo que nos regresa Wati (Token inválido, fuera de ventana, etc.)
-                    try:
-                        error_detail = response.json().get('info', response.text)
-                    except:
-                        error_detail = response.text
-                    estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
-                    
-            except Exception as err:
-                estado = f"fallido (Error Conexión: {type(err).__name__})"
+                error_detail = response.json().get('info', response.text)
+            except:
+                error_detail = response.text
+            estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
+            
+    except Exception as err:
+        estado = f"fallido (Error Conexión: {type(err).__name__})"
+
+    # ... [El resto de tu código para guardar en reporte_envios y el time.sleep(1.5) se mantiene igual]
 
             reporte_envios.append({
                 "dato": str_telefono,             # Entrada original del Excel
