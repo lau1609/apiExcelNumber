@@ -37,26 +37,29 @@ async def procesar_envios(
     hotel: str = Form(...)
 ):
     try:
+        # 1. Leer el archivo Excel
         contents = await file.read()
         df = pd.read_excel(contents)
         
+        # Detectar de forma inteligente la columna de teléfonos
         col_telefono = [c for c in df.columns if 'tel' in c.lower() or 'cel' in c.lower()]
         if not col_telefono:
             return {"success": False, "message": "No se encontró la columna de teléfonos en el Excel."}
         
         nombre_columna = col_telefono[0]
         
+        # 2. Configuración de Credenciales de Wati
         WATI_API_ENDPOINT = "https://live-mt-server.wati.io/10157709"
-        WATI_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsIm5hbWVpZCI6InNpY2hpdHVyQGdtYWlsLmNvbSIsImVtYWlsIjoic2ljaGl0dXJAZ21haWwuY29tIiwiYXV0aF90aW1lIjoiMDYvMTYvMjAyNiAyMDoyNTo1OCIsInRlbmFudF9pZCI6IjEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.i4VDAn20RPQ3wEe2HizMNBaRJ4Jj7EM0kk18YxSEMdc"
+        WATI_TOKEN = "TU_TOKEN_SUPER_LARGO_DE_WATI_AQUI"
         
         headers = {
-            "Authorization": f"Bearer {WATI_TOKEN}",
+            "Authorization": f"Bearer {WATI_TOKEN.strip()}",
             "Content-Type": "application/json"
         }
         
-        # --- AQUÍ VOLVEMOS A DECLARAR EL REPORTE DETALLADO ---
         reporte_envios = []
 
+        # 3. Iterar cada registro del Excel
         for index, row in df.iterrows():
             telefono_crudo = str(row[nombre_columna]).strip()
             telefono_limpio = limpiar_y_formatear_telefono(telefono_crudo)
@@ -65,18 +68,24 @@ async def procesar_envios(
                 reporte_envios.append({
                     "dato": telefono_crudo,
                     "procesado": "Inválido",
-                    "estado": "fallido (Número vacío o mal estructurado)"
+                    "estado": "fallido (Número vacío o inválido)"
                 })
                 continue
                 
-            url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendSessionMessage/{telefono_limpio}"
+            # Endpoint correcto para Plantillas Oficiales de Meta/Wati
+            url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendTemplateMessage/{telefono_limpio}"
+            
+            # 4. Construcción del Payload con Variables Dinámicas
+            # Nota: Meta exige que las variables se envíen en orden secuencial (body_variable_1, body_variable_2, etc.)
+            # Si tu botón dinámico es el que usa la URL, Wati suele mapearlo como el último parámetro o en una sección de botones.
+            # En una estructura estándar de Wati con texto y botón dinámico, se envían en los parámetros del body:
             payload = {
-                "templateName": "sichitur_prueba_1",
-                "broadcastName": "Encuesta_Masiva",
+                "templateName": "sichitur_prueba_1", 
+                "broadcastName": f"Masivo_{hotel.replace(' ', '_')}",
                 "parameters": [
-                    {"name": "body_variable_1", "value": hotel},         # Si tu plantilla usa {{1}}
-                    {"name": "body_variable_2", "value": localizacion},   # Si usa {{2}}
-                    {"name": "body_variable_3", "value": enlace}          # Si usa {{3}}
+                    {"name": "body_variable_1", "value": hotel},         # Ejemplo: {{1}} en el texto
+                    {"name": "body_variable_2", "value": localizacion},  # Ejemplo: {{2}} en el texto
+                    {"name": "body_variable_3", "value": enlace}          # Ejemplo: {{3}} que alimenta la liga dinámica
                 ]
             }
             
@@ -93,14 +102,13 @@ async def procesar_envios(
             except Exception as err:
                 estado = f"fallido (Error Conexión: {type(err).__name__})"
 
-            # Guardamos el resultado de esta fila
             reporte_envios.append({
                 "dato": telefono_crudo,
                 "procesado": telefono_limpio,
                 "estado": estado
             })
 
-        # --- RETORNAMOS LA ESTRUCTURA COMPLETA QUE BUSCA EL FOREACH ---
+        # 5. Respuesta JSON completa para que JavaScript la pinte sin romperse
         return {
             "success": True,
             "tipo_dato": "telefono",
@@ -108,8 +116,7 @@ async def procesar_envios(
         }
 
     except Exception as e:
-        return {"success": False, "message": f"Error al procesar el archivo: {str(e)}"}
-
+        return {"success": False, "message": f"Error crítico del sistema: {str(e)}"}
 # Endpoint de Healthcheck para que Coolify no piense que la app está muerta
 @app.get("/health")
 def health_check():
