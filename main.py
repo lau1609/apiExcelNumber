@@ -8,6 +8,7 @@ import re
 
 app = FastAPI(title="Wati Bulk Sender API")
 
+# Configuración de CORS habilitada para tu frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -17,37 +18,36 @@ app.add_middleware(
 )
 
 WATI_URL = "https://live-mt-server.wati.io/10157709/api/v1/sendSessionMessage"
+# IMPORTANTE: Asegúrate de mantener aquí tu clave JWT pura sin la palabra "Bearer "
 WATTI_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.ValZyX1jO5C_2uO-TM6Dlpt5q9sQWgY-xCQZuUMNkY8..." 
 
 def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
     """
-    Limpia de forma agresiva cualquier formato de teléfono (espacios, guiones, ladas).
+    Limpia cualquier formato extraño del número y asegura el formato internacional para Wati.
     """
     if not telefono_crudo or telefono_crudo == 'nan':
         return ""
         
-    # 1. Si viene con formato científico o decimal flotante por conversión de Pandas (ej: 5.21614e+12 o 521614.0)
-    # Primero limpiamos espacios extremos
+    # 1. Forzar limpieza si Pandas guardó residuos de tipo flotante (.0)
     t_clean = telefono_crudo.strip()
     if t_clean.endswith('.0'):
         t_clean = t_clean[:-2]
         
-    # 2. Remover absolutamente todo lo que no sea un dígito numérico
+    # 2. Dejar única y estrictamente los caracteres numéricos
     numeros = re.sub(r'\D', '', t_clean)
     
     if not numeros:
         return ""
         
-    # 3. Lógica de formateo internacional para Wati (Principalmente México)
-    # Caso A: Trae la lada vieja de whatsapp con el '1' intermedio (ej: 5216141234567 -> 13 dígitos)
+    # 3. Normalización estricta de lada internacional para México (52)
+    # Caso A: Si viene con el formato anterior de WhatsApp (13 dígitos empezando con 521)
     if len(numeros) == 13 and numeros.startswith('521'):
-        numeros = '52' + numeros[3:]  # Quitamos el '1' y dejamos lada internacional + 10 dígitos
+        numeros = '52' + numeros[3:]  # Removemos el '1' intermedio
         
-    # Caso B: El registro viene solo a 10 dígitos locales (ej: 6141234567)
+    # Caso B: Si viene únicamente a 10 dígitos locales (ej: 6141234567)
     elif len(numeros) == 10:
         numeros = '52' + numeros  # Le inyectamos la lada de México de forma automática
         
-    # Caso C: Viene con el código internacional plano (ej: 526141234567 -> 12 dígitos) -> Pasa directo
     return numeros
 
 @app.post("/procesar")
@@ -77,6 +77,7 @@ async def procesar_archivo(
         reporte_envios = []
 
         for index, fila in df.iterrows():
+            # Convertimos el contenido de la celda a string antes de limpiar
             str_telefono = str(fila['Telefono']).strip()
             telefono_limpio = limpiar_y_formatear_telefono(str_telefono)
             
@@ -93,7 +94,7 @@ async def procesar_archivo(
                 if response.status_code in [200, 201]:
                     estado = "enviado"
                 else:
-                    # 🔴 CAPTURA DEL ERROR REAL: Guardamos la respuesta textual que regresó Wati
+                    # Capturamos el detalle del error directo que nos regresa Wati (Token inválido, fuera de ventana, etc.)
                     try:
                         error_detail = response.json().get('info', response.text)
                     except:
@@ -104,11 +105,12 @@ async def procesar_archivo(
                 estado = f"fallido (Error Conexión: {type(err).__name__})"
 
             reporte_envios.append({
-                "dato": str_telefono,             # Mostramos el original ingresado en la tabla
-                "procesado": telefono_limpio,     # Mostramos cómo lo transformó el script
+                "dato": str_telefono,             # Entrada original del Excel
+                "procesado": telefono_limpio,     # Teléfono procesado final
                 "estado": estado
             })
 
+            # Control de flujo de envío respetando los límites de Wati
             time.sleep(1.5)
 
         return {
