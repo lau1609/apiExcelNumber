@@ -23,7 +23,8 @@ WATTI_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2
 
 def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
     """
-    Limpia cualquier formato extraño del número y asegura el formato internacional para Wati.
+    Limpia cualquier formato extraño del número y asegura el formato internacional 
+    adecuado para México manteniendo el '1' si ya viene integrado.
     """
     if not telefono_crudo or telefono_crudo == 'nan':
         return ""
@@ -39,16 +40,15 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
     if not numeros:
         return ""
         
-    # 3. Normalización estricta de lada internacional para México (52)
-    # Caso A: Si viene con el formato anterior de WhatsApp (13 dígitos empezando con 521)
-    if len(numeros) == 13 and numeros.startswith('521'):
-        numeros = '52' + numeros[3:]  # Removemos el '1' intermedio
+    # 3. Normalización de lada internacional para México (52)
+    # Si viene a 10 dígitos locales (ej: 6142843215), le ponemos el prefijo completo con el '1' de celular
+    if len(numeros) == 10:
+        numeros = '521' + numeros  
         
-    # Caso B: Si viene únicamente a 10 dígitos locales (ej: 6141234567)
-    elif len(numeros) == 10:
-        numeros = '52' + numeros  # Le inyectamos la lada de México de forma automática
-        
+    # Si ya viene con 13 dígitos (ej: 5216142843215) o 12 dígitos (526142843215), 
+    # lo dejamos pasar tal cual sin mutilar el número para que Wati lo reciba completo.
     return numeros
+    
 
 @app.post("/procesar")
 async def procesar_archivo(
