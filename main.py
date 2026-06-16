@@ -47,7 +47,7 @@ async def procesar_envios(
         nombre_columna = col_telefono[0]
         
         WATI_API_ENDPOINT = "https://live-mt-server.wati.io/10157709"
-        WATI_TOKEN = "TU_BEARER_TOKEN_AQUI"
+        WATI_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsIm5hbWVpZCI6InNpY2hpdHVyQGdtYWlsLmNvbSIsImVtYWlsIjoic2ljaGl0dXJAZ21haWwuY29tIiwiYXV0aF90aW1lIjoiMDYvMTYvMjAyNiAyMDoyNTo1OCIsInRlbmFudF9pZCI6IjEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.i4VDAn20RPQ3wEe2HizMNBaRJ4Jj7EM0kk18YxSEMdc"
         
         headers = {
             "Authorization": f"Bearer {WATI_TOKEN}",
