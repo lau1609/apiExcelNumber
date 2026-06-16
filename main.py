@@ -71,7 +71,7 @@ async def procesar_envios(
                 
             url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendSessionMessage/{telefono_limpio}"
             payload = {
-                "templateName": "new_chat_v1",
+                "templateName": "sichitur_prueba_1",
                 "broadcastName": "Encuesta_Masiva",
                 "parameters": [
                     {"name": "body_variable_1", "value": hotel},         # Si tu plantilla usa {{1}}
