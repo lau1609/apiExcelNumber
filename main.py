@@ -8,7 +8,6 @@ import re
 
 app = FastAPI(title="Wati Bulk Sender API")
 
-# Permitir que tu frontend se conecte sin problemas de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -18,39 +17,37 @@ app.add_middleware(
 )
 
 WATI_URL = "https://live-mt-server.wati.io/10157709/api/v1/sendSessionMessage"
-# ¡IMPORTANTE!: Quitamos la palabra "Bearer ". Deja solo tu clave pura.
-WATTI_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsIm5hbWVpZCI6InNpY2hpdHVyQGdtYWlsLmNvbSIsImVtYWlsIjoic2ljaGl0dXJAZ21haWwuY29tIiwiYXV0aF90aW1lIjoiMDYvMTYvMjAyNiAxNzo1NToyNCIsInRlbmFudF9pZCI6IjEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.ValZyX1jO5C_2uO-TM6Dlpt5q9sQWgY-xCQZuUMNkY8..." 
+WATTI_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.ValZyX1jO5C_2uO-TM6Dlpt5q9sQWgY-xCQZuUMNkY8..." 
 
 def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
     """
-    Limpia cualquier formato de teléfono y lo convierte al estándar internacional de Wati.
-    Ejemplos para México:
-    - '(614) 123-4567' -> '526141234567'
-    - '6141234567' -> '526141234567'
-    - '5216141234567' -> '526141234567' (Remueve el '1' intermedio de WhatsApp)
+    Limpia de forma agresiva cualquier formato de teléfono (espacios, guiones, ladas).
     """
     if not telefono_crudo or telefono_crudo == 'nan':
         return ""
         
-    # 1. Si Pandas lo leyó como flotante (ej: 5216141234.0), le quitamos el decimal
-    if telefono_crudo.endswith('.0'):
-        telefono_crudo = telefono_crudo[:-2]
+    # 1. Si viene con formato científico o decimal flotante por conversión de Pandas (ej: 5.21614e+12 o 521614.0)
+    # Primero limpiamos espacios extremos
+    t_clean = telefono_crudo.strip()
+    if t_clean.endswith('.0'):
+        t_clean = t_clean[:-2]
         
-    # 2. Dejar única y estrictamente los números (borra paréntesis, espacios, guiones y signos +)
-    numeros = re.sub(r'\D', '', telefono_crudo)
+    # 2. Remover absolutamente todo lo que no sea un dígito numérico
+    numeros = re.sub(r'\D', '', t_clean)
     
     if not numeros:
         return ""
         
-    # 3. Formatear lógica específica para México / Internacional
-    # Si tiene 13 dígitos y empieza con 521 (formato viejo de WhatsApp México con el '1' intermedio)
+    # 3. Lógica de formateo internacional para Wati (Principalmente México)
+    # Caso A: Trae la lada vieja de whatsapp con el '1' intermedio (ej: 5216141234567 -> 13 dígitos)
     if len(numeros) == 13 and numeros.startswith('521'):
-        numeros = '52' + numeros[3:]  # Quitamos el '1' para dejarlo en 52 + 10 dígitos
+        numeros = '52' + numeros[3:]  # Quitamos el '1' y dejamos lada internacional + 10 dígitos
         
-    # Si el usuario solo metió los 10 dígitos locales (ej: 6141234567)
+    # Caso B: El registro viene solo a 10 dígitos locales (ej: 6141234567)
     elif len(numeros) == 10:
-        numeros = '52' + numeros  # Le agregamos de forma automática el prefijo de México
+        numeros = '52' + numeros  # Le inyectamos la lada de México de forma automática
         
+    # Caso C: Viene con el código internacional plano (ej: 526141234567 -> 12 dígitos) -> Pasa directo
     return numeros
 
 @app.post("/procesar")
@@ -66,13 +63,11 @@ async def procesar_archivo(
     try:
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents))
-        
         df.columns = df.columns.str.strip()
 
         if 'Telefono' not in df.columns:
             return {"success": False, "message": "El Excel debe contener una columna llamada 'Telefono'"}
 
-        # Encabezados corregidos: Wati espera el token crudo en la propiedad Authorization
         headers = {
             "Authorization": WATTI_API_KEY,
             "Accept": "application/json",
@@ -83,11 +78,8 @@ async def procesar_archivo(
 
         for index, fila in df.iterrows():
             str_telefono = str(fila['Telefono']).strip()
-            
-            # Pasamos el teléfono por nuestra función inteligente de limpieza
             telefono_limpio = limpiar_y_formatear_telefono(str_telefono)
             
-            # Saltarse filas vacías o que no arrojaron un número válido
             if not telefono_limpio:
                 continue
 
@@ -98,21 +90,25 @@ async def procesar_archivo(
             try:
                 response = requests.post(url_envio, json=payload, headers=headers, timeout=10)
                 
-                # Evaluamos si Wati aceptó el mensaje (Códigos 200 o 201)
                 if response.status_code in [200, 201]:
                     estado = "enviado"
                 else:
-                    estado = f"fallido (API Error {response.status_code})"
+                    # 🔴 CAPTURA DEL ERROR REAL: Guardamos la respuesta textual que regresó Wati
+                    try:
+                        error_detail = response.json().get('info', response.text)
+                    except:
+                        error_detail = response.text
+                    estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
+                    
             except Exception as err:
-                estado = f"fallido ({type(err).__name__})"
+                estado = f"fallido (Error Conexión: {type(err).__name__})"
 
-            # Guardamos en el reporte el teléfono ya formateado para que el usuario vea cómo se mandó
             reporte_envios.append({
-                "dato": telefono_limpio,
+                "dato": str_telefono,             # Mostramos el original ingresado en la tabla
+                "procesado": telefono_limpio,     # Mostramos cómo lo transformó el script
                 "estado": estado
             })
 
-            # ⏳ Pausa de 1.5 segundos regulada
             time.sleep(1.5)
 
         return {
