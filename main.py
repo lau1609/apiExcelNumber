@@ -72,7 +72,7 @@ async def procesar_envios(
                 continue
                 
             # Endpoint correcto para Plantillas Oficiales de Meta/Wati
-            municipio_limpio = localizacion.strip().strip('/')
+            municipio_limpio = /chihuahua/
             hotel_limpio = hotel.strip()
             
             # Ensamblamos exactamente lo que esperas: "/municipio/?hotel=nombre"
@@ -91,11 +91,14 @@ async def procesar_envios(
                         "value": str(localizacion).strip()
                     }, 
                     {
-                        "name": "body_variable_2", 
+                        "name": "button_url_variable_1", 
                         "value": str(liga_dinamica_param)
                     }
                 ]
             }
+
+
+
             
             try:
                 response = requests.post(url_wati, json=payload, headers=headers, timeout=10)
