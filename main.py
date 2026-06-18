@@ -32,7 +32,6 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
 @app.post("/procesar")
 async def procesar_envios(
     file: UploadFile = File(...),
-    enlace: str = Form(...),
     localizacion: str = Form(...),
     hotel: str = Form(...)
 ):
@@ -73,19 +72,22 @@ async def procesar_envios(
                 continue
                 
             # Endpoint correcto para Plantillas Oficiales de Meta/Wati
+            municipio_limpio = localizacion.strip().strip('/')
+            hotel_limpio = hotel.strip()
+            
+            # Ensamblamos exactamente lo que esperas: "/municipio/?hotel=nombre"
+            liga_dinamica_param = f"/{municipio_limpio}/?hotel={hotel_limpio}"
+            
+            # Endpoint oficial para envío de plantillas
             url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendTemplateMessage/{telefono_limpio}"
             
-            # 4. Construcción del Payload con Variables Dinámicas
-            # Nota: Meta exige que las variables se envíen en orden secuencial (body_variable_1, body_variable_2, etc.)
-            # Si tu botón dinámico es el que usa la URL, Wati suele mapearlo como el último parámetro o en una sección de botones.
-            # En una estructura estándar de Wati con texto y botón dinámico, se envían en los parámetros del body:
+            # Construcción del payload con las dos variables
             payload = {
-                "templateName": "sichitur_prueba_1", 
-                "broadcastName": f"Masivo_{hotel.replace(' ', '_')}",
+                "templateName": "encuestapv",  # El nombre que le diste a esta versión
+                "broadcastName": f"Encuesta_{municipio_limpio}",
                 "parameters": [
-                    {"name": "body_variable_1", "value": hotel},         # Ejemplo: {{1}} en el texto
-                    {"name": "body_variable_2", "value": localizacion},  # Ejemplo: {{2}} en el texto
-                    {"name": "body_variable_3", "value": enlace}          # Ejemplo: {{3}} que alimenta la liga dinámica
+                    {"name": "body_variable_1", "value": localizacion.strip()}, # {{1}} en el cuerpo de texto
+                    {"name": "body_variable_2", "value": liga_dinamica_param}   # {{2}} que completa la URL del botón
                 ]
             }
             
