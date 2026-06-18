@@ -80,7 +80,7 @@ async def procesar_envios(
             
             # Endpoint oficial para envío de plantillas
             url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendTemplateMessage/{telefono_limpio}"
-            
+            broadcast_limpio = f"Encuesta_{municipio_limpio}".replace(" ", "_")
             # Construcción del payload con las dos variables
             payload = {
                 "templateName": "encuestapv", 
