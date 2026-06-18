@@ -10,7 +10,7 @@ app = FastAPI()
 # 1. Aseguramos CORS para evitar el error de "Error de comunicación o CORS"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # O pon la URL de tu frontend de sichitur.org si prefieres cerrarlo
+    allow_origins=["*"],  # Cambia por tu dominio de sichitur.org si lo prefieres cerrar
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,17 +71,18 @@ async def procesar_envios(
                 })
                 continue
                 
-            # Endpoint correcto para Plantillas Oficiales de Meta/Wati
-            municipio_limpio = /chihuahua/
+            # CORRECCIÓN DE SINTAXIS: Tomamos dinámicamente la localización del Form y quitamos diagonales duplicadas
+            municipio_limpio = localizacion.strip().strip('/')
             hotel_limpio = hotel.strip()
             
-            # Ensamblamos exactamente lo que esperas: "/municipio/?hotel=nombre"
+            # Ensamblamos exactamente lo que la plantilla espera: "/municipio/?hotel=nombre"
             liga_dinamica_param = f"/{municipio_limpio}/?hotel={hotel_limpio}"
             
             # Endpoint oficial para envío de plantillas
             url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendTemplateMessage/{telefono_limpio}"
             broadcast_limpio = f"Encuesta_{municipio_limpio}".replace(" ", "_")
-            # Construcción del payload con las dos variables
+            
+            # Payload estructurado para Wati con el mapeo correcto del botón interactivo
             payload = {
                 "templateName": "encuestapv", 
                 "broadcastName": broadcast_limpio,
@@ -96,9 +97,6 @@ async def procesar_envios(
                     }
                 ]
             }
-
-
-
             
             try:
                 response = requests.post(url_wati, json=payload, headers=headers, timeout=10)
@@ -119,7 +117,7 @@ async def procesar_envios(
                 "estado": estado
             })
 
-        # 5. Respuesta JSON completa para que JavaScript la pinte sin romperse
+        # 5. Respuesta JSON para tu JavaScript
         return {
             "success": True,
             "tipo_dato": "telefono",
@@ -128,7 +126,8 @@ async def procesar_envios(
 
     except Exception as e:
         return {"success": False, "message": f"Error crítico del sistema: {str(e)}"}
-# Endpoint de Healthcheck para que Coolify no piense que la app está muerta
+
+# Endpoint de Healthcheck para mantener vivo a Coolify
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
