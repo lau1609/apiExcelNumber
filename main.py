@@ -83,11 +83,17 @@ async def procesar_envios(
             
             # Construcción del payload con las dos variables
             payload = {
-                "templateName": "encuestapv",  # El nombre que le diste a esta versión
-                "broadcastName": f"Encuesta_{municipio_limpio}",
+                "templateName": "encuestapv", 
+                "broadcastName": broadcast_limpio,
                 "parameters": [
-                    {"name": "body_variable_1", "value": localizacion.strip()}, # {{1}} en el cuerpo de texto
-                    {"name": "body_variable_2", "value": liga_dinamica_param}   # {{2}} que completa la URL del botón
+                    {
+                        "name": "body_variable_1", 
+                        "value": str(localizacion).strip()
+                    }, 
+                    {
+                        "name": "body_variable_2", 
+                        "value": str(liga_dinamica_param)
+                    }
                 ]
             }
             
