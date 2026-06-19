@@ -24,8 +24,9 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
     numeros = re.sub(r'\D', '', t_clean)
     if not numeros:
         return ""
-    if len(numeros) == 9:
-        numeros = '52' + numeros  
+    
+    if len(numeros) == 10:
+        numeros = '521' + numeros  
     return numeros
 
 @app.post("/procesar")
@@ -44,12 +45,13 @@ async def procesar_envios(
         
         nombre_columna = col_telefono[0]
         
-        WATI_API_ENDPOINT = "https://live-mt-server.wati.io/10157709"
+        WATI_API_URL = "https://live-mt-server.wati.io/api/ext/v3/messageTemplates/send"
         WATI_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsIm5hbWVpZCI6InNpY2hpdHVyQGdtYWlsLmNvbSIsImVtYWlsIjoic2ljaGl0dXJAZ21haWwuY29tIiwiYXV0aF90aW1lIjoiMDYvMTgvMjAyNiAyMTozMjozNCIsInRlbmFudF9pZCI6IjEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.Yc38bchQyP3kuFCmW2cBIDdTrxvRPw3at1XuLyAzbuI"
         
         headers = {
-            "Authorization": f"Bearer {WATI_TOKEN.strip()}",
-            "Content-Type": "application/json"
+            "accept": "application/json",
+            "content-type": "application/json-patch+json",
+            "Authorization": f"Bearer {WATI_TOKEN.strip()}"
         }
         
         reporte_envios = []
@@ -68,29 +70,35 @@ async def procesar_envios(
                 
             municipio_limpio = localizacion.strip().strip('/')
             hotel_limpio = hotel.strip()
-            liga_dinamica_param = f"/{municipio_limpio}/?hotel={hotel_limpio}"
             
-            url_wati = f"{WATI_API_ENDPOINT}/api/v1/sendTemplateMessage/{telefono_limpio}"
+            liga_dinamica_param = f"{municipio_limpio}/?hotel={hotel_limpio}"
             broadcast_limpio = f"Encuesta_{municipio_limpio}".replace(" ", "_")
             
             payload = {
-                "templateName": "encuestapv", 
-                "broadcastName": broadcast_limpio,
-                "parameters": [
+                "template_name": "encuestapv",
+                "broadcast_name": broadcast_limpio,
+                "recipients": [
                     {
-                        "name": "1", 
-                        "value": str(localizacion).strip()
-                    }, 
-                    {
-                        "name": "2", 
-                        "value": str(liga_dinamica_param)
+                        "phone_number": telefono_limpio,
+                        "local_message_id": f"local-{index}-{telefono_limpio}", 
+                        "custom_params": [
+                            {
+                                "name": "1",
+                                "value": str(localizacion).strip()
+                            },
+                            {
+                                "name": "2",
+                                "value": f"/{liga_dinamica_param}" 
+                            }
+                        ]
                     }
                 ]
             }
             
             try:
-                response = requests.post(url_wati, json=payload, headers=headers, timeout=10)
-                if response.status_code == 200:
+                response = requests.post(WATI_API_URL, json=payload, headers=headers, timeout=10)
+                
+                if response.status_code in [200, 201]:
                     estado = "enviado"
                 else:
                     try:
