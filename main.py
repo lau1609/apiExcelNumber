@@ -78,11 +78,11 @@ async def procesar_envios(
                 "broadcastName": broadcast_limpio,
                 "parameters": [
                     {
-                        "name": "body_variable_1", 
+                        "name": "1", 
                         "value": str(localizacion).strip()
                     }, 
                     {
-                        "name": "button_url_variable_1", 
+                        "name": "2", 
                         "value": str(liga_dinamica_param)
                     }
                 ]
