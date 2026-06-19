@@ -24,8 +24,8 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
     numeros = re.sub(r'\D', '', t_clean)
     if not numeros:
         return ""
-    if len(numeros) == 10:
-        numeros = '521' + numeros  
+    if len(numeros) == 9:
+        numeros = '52' + numeros  
     return numeros
 
 @app.post("/procesar")
