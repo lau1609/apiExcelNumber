@@ -29,6 +29,7 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
         numeros = '521' + numeros  
     return numeros
 
+# --- ENDPOINT 1: ENVÍOS MASIVOS ---
 @app.post("/procesar")
 async def procesar_envios(
     file: UploadFile = File(...),
@@ -124,8 +125,8 @@ async def procesar_envios(
     except Exception as e:
         return {"success": False, "message": f"Error crítico del sistema: {str(e)}"}
 
-
-    @app.post("/procesar-individual")
+# --- ENDPOINT 2: ENVÍO INDIVIDUAL (CORREGIDO DE INDENTACIÓN) ---
+@app.post("/procesar-individual")
 async def procesar_envio_individual(
     telefono: str = Form(...),
     localizacion: str = Form(...),
@@ -201,6 +202,7 @@ async def procesar_envio_individual(
         return {"success": False, "message": f"Error crítico en envío individual: {str(e)}"}
         
 
+# --- HEALTH CHECK ---
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
