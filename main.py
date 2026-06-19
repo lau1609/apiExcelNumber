@@ -124,6 +124,83 @@ async def procesar_envios(
     except Exception as e:
         return {"success": False, "message": f"Error crítico del sistema: {str(e)}"}
 
+
+    @app.post("/procesar-individual")
+async def procesar_envio_individual(
+    telefono: str = Form(...),
+    localizacion: str = Form(...),
+    hotel: str = Form(...)
+):
+    try:
+        telefono_limpio = limpiar_y_formatear_telefono(telefono)
+        
+        if not telefono_limpio:
+            return {
+                "success": True,
+                "extracted_data": [{
+                    "dato": telefono,
+                    "procesado": "Inválido",
+                    "estado": "fallido (Número vacío o inválido)"
+                }]
+            }
+            
+        WATI_API_URL = "https://live-mt-server.wati.io/api/ext/v3/messageTemplates/send"
+        WATI_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1bmlxdWVfbmFtZSI6InNpY2hpdHVyQGdtYWlsLmNvbSIsIm5hbWVpZCI6InNpY2hpdHVyQGdtYWlsLmNvbSIsImVtYWlsIjoic2ljaGl0dXJAZ21haWwuY29tIiwiYXV0aF90aW1lIjoiMDYvMTgvMjAyNiAyMTozMjozNCIsInRlbmFudF9pZCI6IjEwMTU3NzA5IiwiZGJfbmFtZSI6Im10LXByb2QtVGVuYW50cyIsImh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vd3MvMjAwOC8wNi9pZGVudGl0eS9jbGFpbXMvcm9sZSI6IkFETUlOSVNUUkFUT1IiLCJleHAiOjI1MzQwMjMwMDgwMCwiaXNzIjoiQ2xhcmVfQUkiLCJhdWQiOiJDbGFyZV9BSSJ9.Yc38bchQyP3kuFCmW2cBIDdTrxvRPw3at1XuLyAzbuI"
+        
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json-patch+json",
+            "Authorization": f"Bearer {WATI_TOKEN.strip()}"
+        }
+        
+        municipio_limpio = localizacion.strip().strip('/')
+        hotel_limpio = hotel.strip()
+        
+        liga_dinamica_param = f"{municipio_limpio}/?hotel={hotel_limpio}"
+        broadcast_limpio = f"Encuesta_Ind_{municipio_limpio}".replace(" ", "_")
+        
+        payload = {
+            "template_name": "encuestapv",
+            "broadcast_name": broadcast_limpio,
+            "recipients": [
+                {
+                    "phone_number": telefono_limpio,
+                    "local_message_id": f"local-ind-{telefono_limpio}", 
+                    "custom_params": [
+                        { "name": "1", "value": str(localizacion).strip() },
+                        { "name": "2", "value": f"/{liga_dinamica_param}" }
+                    ]
+                }
+            ]
+        }
+        
+        try:
+            response = requests.post(WATI_API_URL, json=payload, headers=headers, timeout=10)
+            if response.status_code in [200, 201]:
+                estado = "enviado"
+            else:
+                try:
+                    error_detail = response.json().get('info', response.text)
+                except:
+                    error_detail = response.text
+                estado = f"fallido (Wati Error {response.status_code}: {error_detail})"
+        except Exception as err:
+            estado = f"fallido (Error Conexión: {type(err).__name__})"
+
+        return {
+            "success": True,
+            "tipo_dato": "telefono",
+            "extracted_data": [{
+                "dato": telefono,
+                "procesado": telefono_limpio,
+                "estado": estado
+            }]
+        }
+
+    except Exception as e:
+        return {"success": False, "message": f"Error crítico en envío individual: {str(e)}"}
+        
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
