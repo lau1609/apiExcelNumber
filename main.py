@@ -116,7 +116,6 @@ async def procesar_envios(
     except Exception as e:
         return {"success": False, "message": f"Error crítico del sistema: {str(e)}"}
 
-# Endpoint de Healthcheck para mantener vivo a Coolify
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
