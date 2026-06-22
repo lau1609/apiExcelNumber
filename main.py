@@ -26,7 +26,7 @@ def limpiar_y_formatear_telefono(telefono_crudo: str) -> str:
         return ""
     
     if len(numeros) == 10:
-        numeros = '52' + numeros  
+        numeros = '521' + numeros  
     return numeros
 
 # --- ENDPOINT 1: ENVÍOS MASIVOS ---
